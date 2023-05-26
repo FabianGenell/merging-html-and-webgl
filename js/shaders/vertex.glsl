@@ -94,7 +94,7 @@ void main() {
 
     // newPosition.z += sin(dist * 4.0);
 
-    newPosition += normal * noise;
+    // newPosition += normal * noise;
 
     vNoise = noise;
     vUv = mod(uv, 1.0);
