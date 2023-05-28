@@ -34,12 +34,13 @@ export default class Sketch {
         this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
         this.renderer.setSize(this.width, this.height);
         this.renderer.outputColorSpace = 'srgb-linear'; //Without this images become washed out.
+        this.renderer.setPixelRatio(Math.max(window.devicePixelRatio, 2));
 
         this.container.appendChild(this.renderer.domElement);
 
         this.controls = new OrbitControls(this.camera, this.renderer.domElement)
 
-        this.images = [...document.querySelectorAll('img')];
+        this.images = [...document.querySelectorAll('.item__image img')];
 
         this.raycaster = new THREE.Raycaster();
         this.pointer = new THREE.Vector2();
@@ -93,7 +94,7 @@ export default class Sketch {
           vec2 newUV = vUv;
 
           float bottomArea = smoothstep(0.4, 0.0, vUv.y);
-          float topArea = smoothstep(1.0, 0.6, vUv.y) * 2.0 - 1.0;
+          float topArea = smoothstep(1.0, 0.8, vUv.y) * 2.0 - 1.0;
 
           bottomArea = pow(bottomArea, 4.0);
 
@@ -102,7 +103,6 @@ export default class Sketch {
 
           newUV.x -= (vUv.x - 0.5) * 0.5* vUv.y *  bottomArea * smoothstep(0.0, 1.0, scrollSpeed);
           vec4 texture = texture2D( tDiffuse, newUV);
-          //gl_FragColor = texture;
           gl_FragColor = mix(vec4(1.0), texture, n);
         }
         `
@@ -159,6 +159,15 @@ export default class Sketch {
         this.camera.aspect = this.width / this.height;
 
         this.camera.updateProjectionMatrix();
+        this.imageStore.forEach((image) => {
+            const { top, left, width, height } = image.img.getBoundingClientRect();
+            image.mesh.scale.set(width, height);
+            image.top = top;
+            image.left = left;
+            image.width = width;
+            image.height = height;
+        })
+        this.setImagePosition();
     }
 
     addImages() {
@@ -181,7 +190,9 @@ export default class Sketch {
         this.imageStore = this.images.map(img => {
             const { top, left, width, height } = img.getBoundingClientRect();
 
-            const geometry = new THREE.PlaneGeometry(width, height, 10, 10);
+            img.style.opacity = 0;
+
+            const geometry = new THREE.PlaneGeometry(1, 1, 10, 10);
             const texture = new THREE.TextureLoader().load(img.src);
 
             const material = this.material.clone();
@@ -189,6 +200,7 @@ export default class Sketch {
             this.materials.push(material);
 
             const mesh = new THREE.Mesh(geometry, material);
+            mesh.scale.set(width, height)
 
             img.addEventListener('mouseenter', () => {
                 gsap.to(material.uniforms.hoverState, {
@@ -216,6 +228,7 @@ export default class Sketch {
             })
 
         })
+
     }
 
     setImagePosition() {
@@ -223,6 +236,7 @@ export default class Sketch {
             //Converting coordinates from page (0,0 is in topleft) to three (0,0 is in center)
             image.mesh.position.x = -this.width / 2 + image.left + image.width / 2;
             image.mesh.position.y = this.height / 2 + this.currentScroll - image.top - image.height / 2;
+
         })
     }
 
@@ -258,13 +272,24 @@ export default class Sketch {
         window.requestAnimationFrame(this.render.bind(this)); //We use bind(this) so that the context of 'this' doesn't get lost (or something like that)
     }
 }
+if (window.innerWidth > 600) {
+    new Sketch({
+        dom: document.getElementById('container'),
+    });
 
-new Sketch({
-    dom: document.getElementById('container'),
-});
+}
 
 
+/*
+TODO
+ [x] Fix image resize window
+    - One way to do this is to make geometry 1 x 1 then scaling it (mesh.scale.set)
+ [x] Only render on computers (not phones)
+ [ ] Only render on scroll / mouseenter
+ [ ] Only setposition images that are visible?
+ [ ] Device Pixel Ratio (max 2)
 
+*/
 
 
 
