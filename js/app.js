@@ -1,5 +1,10 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls'
+import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer';
+import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass';
+import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass';
+import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass';
+
 import imagesLoaded from 'imagesloaded';
 import FontFaceObserver from 'fontfaceobserver';
 import Lenis from '@studio-freight/lenis';
@@ -7,9 +12,9 @@ import gsap from 'gsap';
 
 import fragment from './shaders/fragment.glsl'
 import vertex from './shaders/vertex.glsl'
+import noise from './shaders/noise.glsl'
 
 
-// import clouds from '../img/clouds.jpg'
 
 export default class Sketch {
     constructor(options) {
@@ -53,8 +58,60 @@ export default class Sketch {
             this.resize();
             this.setupResize();
             this.addObjects();
+            this.composerPass();
             this.render();
         })
+    }
+
+    composerPass() {
+        this.composer = new EffectComposer(this.renderer);
+        this.renderPass = new RenderPass(this.scene, this.camera);
+        this.composer.addPass(this.renderPass);
+
+        //custom shader pass
+        var counter = 0.0;
+        this.myEffect = {
+            uniforms: {
+                "tDiffuse": { value: null },
+                "scrollSpeed": { value: null },
+                "time": { value: null },
+            },
+            vertexShader: `
+        varying vec2 vUv;
+        void main() {
+          vUv = uv;
+          gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );
+        }
+        `,
+            fragmentShader: `
+        uniform sampler2D tDiffuse;
+        uniform float scrollSpeed;
+        uniform float time;
+        varying vec2 vUv;
+        ${noise}
+        void main(){
+          vec2 newUV = vUv;
+
+          float bottomArea = smoothstep(0.4, 0.0, vUv.y);
+          float topArea = smoothstep(1.0, 0.6, vUv.y) * 2.0 - 1.0;
+
+          bottomArea = pow(bottomArea, 4.0);
+
+          float noise = 0.5 * (cnoise(vec3(vUv * 10.0, time * 0.3)) + 1.0);
+          float n = smoothstep(0.5, 0.51, noise + topArea);
+
+          newUV.x -= (vUv.x - 0.5) * 0.5* vUv.y *  bottomArea * smoothstep(0.0, 1.0, scrollSpeed);
+          vec4 texture = texture2D( tDiffuse, newUV);
+          //gl_FragColor = texture;
+          gl_FragColor = mix(vec4(1.0), texture, n);
+        }
+        `
+        }
+
+        this.customPass = new ShaderPass(this.myEffect);
+        this.customPass.renderToScreen = true;
+
+        this.composer.addPass(this.customPass);
     }
 
     pointerMovement() {
@@ -192,8 +249,12 @@ export default class Sketch {
         this.time += 0.05;
         this.materials.forEach((material) => material.uniforms.time.value = this.time);
 
+        this.customPass.uniforms.scrollSpeed.value = this.lenis.velocity;
+        this.customPass.uniforms.time.value = this.time;
+
         this.lenis.raf(time)
-        this.renderer.render(this.scene, this.camera);
+        // this.renderer.render(this.scene, this.camera);
+        this.composer.render();
         window.requestAnimationFrame(this.render.bind(this)); //We use bind(this) so that the context of 'this' doesn't get lost (or something like that)
     }
 }
